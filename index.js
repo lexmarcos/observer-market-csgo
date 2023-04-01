@@ -2,7 +2,10 @@ const axios = require("axios");
 const fs = require("fs");
 const loki = require("lokijs");
 const crypto = require("crypto");
+const { sendDiscordMessage } = require("./discord");
+const { DiscordMessageQueue } = require("./DiscordQueue");
 
+const discordMessageQueue = new DiscordMessageQueue();
 let skinsCollection;
 
 function databaseInitialize() {
@@ -128,13 +131,15 @@ axios
 
       // Salva as skins agrupadas na database LokiJS
       for (const marketHashName in groupedSkins) {
-        const id = createId(marketHashName);
-        const existingSkin = skinsCollection.findOne({ id });
+        const _id = createId(marketHashName);
+        const existingSkin = skinsCollection.findOne({ _id });
 
         const group = groupedSkins[marketHashName];
         const highestDiscountItem = group.items.reduce((maxDiscountItem, currentItem) => {
           return currentItem.discount > maxDiscountItem.discount ? currentItem : maxDiscountItem;
         }, group.items[0]);
+
+        const currentDate = new Date();
 
         const newPriceHistoryEntry = {
           date: currentDate,
@@ -147,14 +152,14 @@ axios
           ? existingSkin.price_history[existingSkin.price_history.length - 1]
           : null;
         const lastDate = lastPriceHistoryEntry ? new Date(lastPriceHistoryEntry.date) : null;
-        const currentDate = new Date();
+
         const dateDifferenceInDays = lastDate
           ? Math.floor((currentDate - lastDate) / (1000 * 60 * 60 * 24))
           : null;
 
         const shouldUpdatePriceHistory =
           !lastPriceHistoryEntry ||
-          newPriceHistoryEntry.price < lastPriceHistoryEntry.price ||
+          newPriceHistoryEntry.discount > lastPriceHistoryEntry.discount ||
           dateDifferenceInDays >= 1;
 
         if (existingSkin) {
@@ -163,13 +168,15 @@ axios
 
           if (shouldUpdatePriceHistory) {
             existingSkin.price_history.push(newPriceHistoryEntry);
+            discordMessageQueue.sendMessage(existingSkin, newPriceHistoryEntry);
           }
 
           skinsCollection.update(existingSkin);
         } else {
-          group._id = id;
+          group._id = _id;
           group.price_history = [newPriceHistoryEntry];
           skinsCollection.insert(group);
+          discordMessageQueue.sendMessage(group, newPriceHistoryEntry);
         }
       }
 
