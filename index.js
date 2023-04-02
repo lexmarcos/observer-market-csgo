@@ -2,7 +2,6 @@ const axios = require("axios");
 const fs = require("fs");
 const loki = require("lokijs");
 const crypto = require("crypto");
-const { sendDiscordMessage } = require("./discord");
 const { DiscordMessageQueue } = require("./DiscordQueue");
 
 const discordMessageQueue = new DiscordMessageQueue();
@@ -60,7 +59,7 @@ axios
       const data = response.data;
       all_skins.push(...data.results);
 
-      if (page === 1) {
+      if (page < totalPages) {
         await getPage(page + 1);
       } else {
         processResults();
@@ -168,7 +167,9 @@ axios
 
           if (shouldUpdatePriceHistory) {
             existingSkin.price_history.push(newPriceHistoryEntry);
-            discordMessageQueue.sendMessage(existingSkin, newPriceHistoryEntry);
+            if (newPriceHistoryEntry.discount >= 10) {
+              discordMessageQueue.sendMessage(existingSkin, newPriceHistoryEntry);
+            }
           }
 
           skinsCollection.update(existingSkin);
@@ -176,7 +177,9 @@ axios
           group._id = _id;
           group.price_history = [newPriceHistoryEntry];
           skinsCollection.insert(group);
-          discordMessageQueue.sendMessage(group, newPriceHistoryEntry);
+          if (newPriceHistoryEntry.discount >= 10) {
+            discordMessageQueue.sendMessage(group, newPriceHistoryEntry);
+          }
         }
       }
 
